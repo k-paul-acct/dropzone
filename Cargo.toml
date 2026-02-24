@@ -1,0 +1,14 @@
+[package]
+name = "dropzone"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.8", features = ["multipart", "tokio", "http2"] }
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }
+chrono = "0.4.44"
+colored = "3.1.1"
+local-ip-address = "0.6.10"
+tokio = { version = "1.49.0", features = ["full"] }
+tower-http = { version = "0.6.8", features = ["cors", "limit"] }
+uuid = { version = "1.21.0", features = ["v4"] }

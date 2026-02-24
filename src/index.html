@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DropZone</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --border: #2d3048;
+            --accent: #6c63ff;
+            --text: #e8eaf6;
+            --muted: #7b80a0;
+            --success: #4caf82;
+            --error: #e05c5c;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1rem;
+            gap: 1rem;
+        }
+
+        header {
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        header h1 span {
+            color: var(--accent);
+        }
+
+        header p {
+            color: var(--muted);
+            margin-top: 0.5rem;
+            font-size: 1rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        @media (max-width: 600px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .card h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            display: flex;
+        }
+
+        .drop-area {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            min-height: 180px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            position: relative;
+        }
+
+        .drop-area:hover,
+        .drop-area.drag-over {
+            border-color: var(--accent);
+            background: color-mix(var(--accent), transparent 90%);
+        }
+
+        .drop-area input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .drop-area .drop-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .drop-area p {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .drop-area p strong {
+            color: var(--text);
+        }
+
+        #file-list {
+            display: none;
+            flex-direction: column;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .file-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            border-radius: 4px;
+            width: 100%;
+            background: color-mix(var(--accent), transparent 80%);
+        }
+
+        .btn-remove {
+            background: var(--error);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            color: white;
+            font-weight: 600;
+            padding: 0.33rem 0.66rem;
+            transition: transform 0.2s;
+            align-self: flex-start;
+        }
+
+        .btn-remove:hover {
+            background: color-mix(var(--error), black 20%);
+        }
+
+        .btn-remove:active {
+            transform: scale(0.975);
+        }
+
+        textarea {
+            background: color-mix(var(--surface), black 20%);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 1rem;
+            padding: 0.75rem 1rem;
+            resize: vertical;
+            width: 100%;
+            min-height: 180px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus {
+            border-color: var(--accent);
+        }
+
+        button[type="submit"] {
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 0.66rem;
+            width: 100%;
+            transition: transform 0.2s;
+            align-self: flex-start;
+        }
+
+        button[type="submit"]:hover {
+            background: color-mix(var(--accent), black 20%);
+        }
+
+        button[type="submit"]:active {
+            transform: scale(0.975);
+        }
+
+        button[type="submit"]:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toast-container {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            z-index: 999;
+        }
+
+        .toast {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--success);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+            animation: slide-in 0.2s ease;
+            max-width: 300px;
+        }
+
+        .toast.error {
+            border-left-color: var(--error);
+        }
+
+        @keyframes slide-in {
+            from {
+                transform: translateX(120%);
+                opacity: 0;
+            }
+
+            to {
+                transform: none;
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Drop<span>Zone</span></h1>
+        <p>Send files or messages to this device instantly.</p>
+    </header>
+
+    <div class="grid">
+        <div class="card">
+            <h2>📁 Send Files</h2>
+            <div class="drop-area" id="drop-area">
+                <div class="drop-icon">⬆️</div>
+                <p><strong>Click or drag & drop</strong></p>
+                <p>any file type accepted</p>
+                <input type="file" id="file-input" multiple />
+            </div>
+            <div id="file-list"></div>
+            <button type="submit" id="upload-btn" disabled>Upload</button>
+        </div>
+
+        <div class="card">
+            <h2>💬 Send Message</h2>
+            <textarea id="msg-input" placeholder="Type your message here..."></textarea>
+            <button type="submit" id="send-btn">Send</button>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toasts"></div>
+
+    <script>
+        const dropArea = document.getElementById('drop-area');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const uploadBtn = document.getElementById('upload-btn');
+        const msgInput = document.getElementById('msg-input');
+        const sendBtn = document.getElementById('send-btn');
+        const toastsCtr = document.getElementById('toasts');
+
+        let selectedFiles = [];
+
+        function toast(msg, ok = true) {
+            const el = document.createElement('div');
+            el.className = 'toast' + (ok ? '' : ' error');
+            el.textContent = msg;
+            toastsCtr.appendChild(el);
+            setTimeout(() => el.remove(), 3000);
+        }
+
+        function updateFileList() {
+            fileList.innerHTML = '';
+            fileList.style.display = 'none';
+
+            selectedFiles.forEach(f => {
+                const d = document.createElement('div');
+                d.className = 'file-list-item';
+
+                const s = document.createElement('span');
+                s.textContent = f.name;
+
+                const r = document.createElement('button');
+                r.textContent = 'Remove';
+                r.className = 'btn-remove';
+                r.setAttribute('type', 'button');
+                r.onclick = () => {
+                    d.remove();
+                    selectedFiles = selectedFiles.filter(item => item !== f);
+                    if (selectedFiles.length === 0) {
+                        uploadBtn.disabled = true;
+                        fileList.style.display = 'none';
+                    } else {
+                        uploadBtn.disabled = false;
+                        fileList.style.display = 'flex';
+                    }
+                }
+
+                d.appendChild(s);
+                d.appendChild(r);
+
+                fileList.appendChild(d);
+            });
+
+            if (selectedFiles.length === 0) {
+                uploadBtn.disabled = true;
+                fileList.style.display = 'none';
+            } else {
+                uploadBtn.disabled = false;
+                fileList.style.display = 'flex';
+            }
+        }
+
+        fileInput.addEventListener('change', () => {
+            selectedFiles = Array.from(fileInput.files);
+            updateFileList();
+        });
+
+        dropArea.addEventListener('dragover', e => {
+            e.preventDefault();
+            dropArea.classList.add('drag-over');
+        });
+
+        dropArea.addEventListener('dragleave', () => dropArea.classList.remove('drag-over'));
+
+        dropArea.addEventListener('drop', e => {
+            e.preventDefault();
+            dropArea.classList.remove('drag-over');
+            selectedFiles = Array.from(e.dataTransfer.files);
+            updateFileList();
+        });
+
+        uploadBtn.addEventListener('click', async () => {
+            if (!selectedFiles.length) {
+                return;
+            }
+
+            const fd = new FormData();
+            selectedFiles.forEach((f, i, _) => fd.append(`files${i}`, f));
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: fd });
+                if (res.ok) {
+                    toast(`✅ ${selectedFiles.length} file(s) sent`);
+                    selectedFiles = [];
+                    updateFileList();
+                } else {
+                    toast('❌ Upload failed', false);
+                }
+            } catch {
+                toast('❌ Network error', false);
+            }
+
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Upload';
+        });
+
+        sendBtn.addEventListener('click', async () => {
+            const text = msgInput.value.trim();
+            if (!text) {
+                return;
+            }
+
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+
+            try {
+                const fd = new FormData();
+                fd.append('message', text);
+                const res = await fetch('/message', { method: 'POST', body: fd });
+                if (res.ok) {
+                    toast('✅ Message sent');
+                    msgInput.value = '';
+                } else {
+                    toast('❌ Failed to send', false);
+                }
+            } catch {
+                toast('❌ Network error', false);
+            }
+
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send';
+        });
+    </script>
+</body>
+
+</html>
