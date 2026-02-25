@@ -10,6 +10,7 @@ use axum::{
 use axum_server::tls_rustls::RustlsConfig;
 use chrono::Local;
 use colored::Colorize;
+use tap::Pipe;
 use tokio::{fs, net::TcpListener};
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -128,6 +129,9 @@ async fn main() {
     std::fs::create_dir_all(&upload_dir).expect("Cannot create dropzone directory");
 
     let cors = CorsLayer::new().allow_origin(Any);
+    let max_size = env::var("DROPZONE_MAX_BODY_SIZE")
+        .ok()
+        .and_then(|a| a.parse().ok());
 
     let app = Router::new()
         .route("/", get(index))
@@ -135,7 +139,10 @@ async fn main() {
         .route("/upload", post(handle_upload))
         .route("/message", post(handle_message))
         .layer(DefaultBodyLimit::disable())
-        .layer(RequestBodyLimitLayer::new(45 * 1024 * 1024))
+        .pipe(|router| match max_size {
+            Some(size) => router.layer(RequestBodyLimitLayer::new(size)),
+            None => router,
+        })
         .layer(cors)
         .with_state(upload_dir.clone());
 
