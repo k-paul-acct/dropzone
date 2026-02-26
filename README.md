@@ -36,5 +36,5 @@ cargo build --release
     ./target/release/dropzone 5050 --no-tls
     ```
 2. On any device on the same network, open the **Network** URL, you may need to proceed to the site if using custom TLS certificate.
-3. Upload files or type a message – files are saved to `./dropzone-uploads/` directory, messages are printed in the terminal.
+3. Upload files or type a message – files are saved to `./dropzone-uploads/` directory, messages are printed in the terminal. If you want to save files in the current directory, use the `--flat` flag.
 4. By default, there is no limit on the upload body size, so files of any size can be uploaded. To restrict the maximum body size, set the `DROPZONE_MAX_BODY_SIZE` environment variable to the desired limit in bytes.

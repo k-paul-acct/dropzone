@@ -124,7 +124,11 @@ fn print_entry(no_tls: bool, port: u16, upload_dir: &PathBuf) {
 #[tokio::main]
 async fn main() {
     let curr_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let upload_dir = curr_dir.join("dropzone-uploads");
+    let upload_dir = if env::args().any(|a| a == "--flat") {
+        curr_dir.clone()
+    } else {
+        curr_dir.join("dropzone-uploads")
+    };
 
     std::fs::create_dir_all(&upload_dir).expect("Cannot create dropzone directory");
 
