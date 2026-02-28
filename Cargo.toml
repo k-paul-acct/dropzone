@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.102"
 axum = { version = "0.8.8", features = ["multipart", "tokio", "http2"] }
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 chrono = "0.4.44"
+clap = { version = "4.5.60", features = ["derive", "env"] }
 colored = "3.1.1"
 local-ip-address = "0.6.10"
 tap = "1.0.1"

@@ -1,15 +1,16 @@
-use std::{env, net::SocketAddr, path::PathBuf};
-
+use anyhow::Context;
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Multipart},
+    extract::{DefaultBodyLimit, Multipart, State},
     http::{StatusCode, header},
     response::{Html, IntoResponse},
     routing::{get, post},
 };
 use axum_server::tls_rustls::RustlsConfig;
 use chrono::Local;
+use clap::Parser;
 use colored::Colorize;
+use std::{env, net::SocketAddr, path::PathBuf};
 use tap::Pipe;
 use tokio::{fs, net::TcpListener};
 use tower_http::{
@@ -29,10 +30,7 @@ async fn favicon() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "image/svg+xml")], FAVICON_SVG)
 }
 
-async fn handle_upload(
-    axum::extract::State(upload_dir): axum::extract::State<PathBuf>,
-    mut multipart: Multipart,
-) -> impl IntoResponse {
+async fn handle_upload(State(upload_dir): State<PathBuf>, mut multipart: Multipart) -> impl IntoResponse {
     while let Ok(Some(field)) = multipart.next_field().await {
         let file_name = match field.file_name() {
             Some(n) if !n.is_empty() => n.to_string(),
@@ -97,45 +95,60 @@ async fn handle_message(mut multipart: Multipart) -> impl IntoResponse {
     StatusCode::OK
 }
 
-fn print_entry(no_tls: bool, port: u16, upload_dir: &PathBuf) {
+/// Easily share files and messages on a local network.
+#[derive(Parser)]
+#[command(version)]
+struct Cli {
+    /// Port to run on.
+    #[arg(default_value_t = 8080)]
+    port: u16,
+
+    /// Do not use TLS (run in HTTP mode).
+    #[arg(long)]
+    no_tls: bool,
+
+    /// Save files in the specified directory.
+    #[arg(short, long, default_value = "dropzone-uploads")]
+    output: PathBuf,
+
+    /// Limit the maximum body size of uploaded files in bytes.
+    #[arg(long, env = "DROPZONE_MAX_BODY_SIZE")]
+    max_body_size: Option<usize>,
+}
+
+fn print_entry(args: &Cli) {
     let local_ip = local_ip_address::local_ip()
         .map(|ip| ip.to_string())
         .unwrap_or_else(|_| "<your-ip>".to_string());
 
-    let protocol = if no_tls { "http" } else { "https" };
-    let local_address = format!("{}://localhost:{}", protocol, port);
-    let network_address = format!("{}://{}:{}", protocol, local_ip, port);
+    let protocol = if args.no_tls { "http" } else { "https" };
+    let local_address = format!("{}://localhost:{}", protocol, args.port);
+    let network_address = format!("{}://{}:{}", protocol, local_ip, args.port);
 
     println!("{}", "╔══════════════════════════════════╗".purple());
     println!("{}", "║             DropZone 🚀          ║".purple());
     println!("{}", "╚══════════════════════════════════╝".purple());
 
-    if no_tls {
-        println!("{}", "Running in insecure mode".yellow().bold());
+    if args.no_tls {
+        println!("{}", "  Running in insecure mode".red().bold());
     }
 
     println!("  {} {}", "Local:".bold(), local_address);
     println!("  {} {}", "Network:".bold(), network_address);
-    println!("  {} {}", "Uploads:".bold(), upload_dir.display());
+    println!("  {} {}", "Uploads:".bold(), args.output.display());
     println!("{}", "  Waiting for connections...".dimmed());
     println!();
 }
 
 #[tokio::main]
-async fn main() {
-    let curr_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let upload_dir = if env::args().any(|a| a == "--flat") {
-        curr_dir.clone()
-    } else {
-        curr_dir.join("dropzone-uploads")
-    };
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Cli::parse();
 
-    std::fs::create_dir_all(&upload_dir).expect("Cannot create dropzone directory");
+    fs::create_dir_all(&args.output)
+        .await
+        .with_context(|| format!("could not create output directory `{}`", args.output.display()))?;
 
     let cors = CorsLayer::new().allow_origin(Any);
-    let max_size = env::var("DROPZONE_MAX_BODY_SIZE")
-        .ok()
-        .and_then(|a| a.parse().ok());
 
     let app = Router::new()
         .route("/", get(index))
@@ -143,40 +156,35 @@ async fn main() {
         .route("/upload", post(handle_upload))
         .route("/message", post(handle_message))
         .layer(DefaultBodyLimit::disable())
-        .pipe(|router| match max_size {
-            Some(size) => router.layer(RequestBodyLimitLayer::new(size)),
-            None => router,
+        .pipe(|a| match args.max_body_size {
+            Some(size) => a.layer(RequestBodyLimitLayer::new(size)),
+            None => a,
         })
         .layer(cors)
-        .with_state(upload_dir.clone());
+        .with_state(args.output.clone());
 
-    let port: u16 = env::args()
-        .nth(1)
-        .and_then(|a| a.parse().ok())
-        .unwrap_or(8080);
+    let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    print_entry(&args);
 
-    let no_tls = env::args().any(|a| a == "--no-tls");
+    if args.no_tls {
+        let listener = TcpListener::bind(addr)
+            .await
+            .with_context(|| format!("could not bind address `{}`", addr))?;
 
-    print_entry(no_tls, port, &upload_dir);
-
-    if no_tls {
-        let listener = TcpListener::bind(addr).await.expect("Failed to bind port");
-        axum::serve(listener, app).await.unwrap();
+        axum::serve(listener, app).await.with_context(|| "error in server")?;
     } else {
-        let cert_path = env::var("DROPZONE_CERT_PATH")
-            .unwrap_or_else(|_| curr_dir.join("cert.crt").to_string_lossy().into_owned());
-        let cert_key_path = env::var("DROPZONE_CERT_KEY_PATH")
-            .unwrap_or_else(|_| curr_dir.join("cert.key").to_string_lossy().into_owned());
-
+        let cert_path = env::var("DROPZONE_CERT_PATH").unwrap_or_else(|_| "./cert.crt".to_string());
+        let cert_key_path = env::var("DROPZONE_CERT_KEY_PATH").unwrap_or_else(|_| "./cert.key".to_string());
         let config = RustlsConfig::from_pem_file(cert_path, cert_key_path)
             .await
-            .expect("Failed to read cert data");
+            .with_context(|| "could not read cert data")?;
 
         axum_server::bind_rustls(addr, config)
             .serve(app.into_make_service())
             .await
-            .unwrap();
+            .with_context(|| "error in server")?;
     }
+
+    Ok(())
 }

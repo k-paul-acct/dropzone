@@ -25,16 +25,7 @@ cargo build --release
 ./target/release/dropzone 5050
 ```
 
-## Configuration
+### Configuration
 
-1. By default, DropZone runs with TLS (HTTPS) using the certificate and private key specified in the environment variables `DROPZONE_CERT_PATH` and `DROPZONE_CERT_KEY_PATH`. To run without TLS (HTTP only), specify the `--no-tls` flag when running the command:
-    ```bash
-    # run on the default port 8080 without TLS
-    ./target/release/dropzone --no-tls
-
-    # run on the custom port without TLS
-    ./target/release/dropzone 5050 --no-tls
-    ```
-2. On any device on the same network, open the **Network** URL, you may need to proceed to the site if using custom TLS certificate.
-3. Upload files or type a message – files are saved to `./dropzone-uploads/` directory, messages are printed in the terminal. If you want to save files in the current directory, use the `--flat` flag.
-4. By default, there is no limit on the upload body size, so files of any size can be uploaded. To restrict the maximum body size, set the `DROPZONE_MAX_BODY_SIZE` environment variable to the desired limit in bytes.
+1. By default, DropZone runs with TLS (HTTPS mode) using the certificate and private key specified in the environment variables `DROPZONE_CERT_PATH` and `DROPZONE_CERT_KEY_PATH`. To run without TLS (HTTP mode), use the `--no-tls` flag.
+2. To show all available options, use the `--help` flag.
