@@ -27,5 +27,5 @@ cargo build --release
 
 ### Configuration
 
-1. By default, DropZone runs with TLS (HTTPS mode) using the certificate and private key specified in the environment variables `DROPZONE_CERT_PATH` and `DROPZONE_CERT_KEY_PATH`. To run without TLS (HTTP mode), use the `--no-tls` flag.
+1. By default, DropZone runs with TLS (HTTPS mode) using the certificate and private key specified in the environment variables `DROPZONE_CERT_PATH` and `DROPZONE_CERT_KEY_PATH`. To run without TLS (HTTP-only mode), use the `--no-tls` flag.
 2. To show all available options, use the `--help` flag.
