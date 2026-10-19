@@ -12,7 +12,6 @@ use chrono::Local;
 use clap::Parser;
 use colored::Colorize;
 use std::{env, net::SocketAddr, path::PathBuf};
-use tap::Pipe;
 use tokio::fs;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -141,13 +140,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/favicon.svg", get(favicon))
         .route("/upload", post(handle_upload))
         .route("/message", post(handle_message))
-        .layer(DefaultBodyLimit::disable())
-        .pipe(|a| match args.max_body_size {
-            Some(size) => a.layer(RequestBodyLimitLayer::new(size)),
-            None => a,
-        })
-        .layer(cors)
-        .with_state(args.output.clone());
+        .layer(DefaultBodyLimit::disable());
+    let app = match args.max_body_size {
+        Some(size) => app.layer(RequestBodyLimitLayer::new(size)),
+        None => app,
+    };
+    let app = app.layer(cors).with_state(args.output.clone());
 
     let ports = Ports {
         http: args.port,
