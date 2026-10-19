@@ -87,7 +87,7 @@ async fn handle_message(mut multipart: Multipart) -> impl IntoResponse {
                         "{} {}\n  {}",
                         format!("[{ts}]").dimmed(),
                         "MESSAGE".yellow().bold(),
-                        trimmed.white(),
+                        trimmed,
                     );
                 }
             }
