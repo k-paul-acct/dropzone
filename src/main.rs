@@ -199,11 +199,11 @@ fn print_entry(http_addr: SocketAddr, https_addr: Option<SocketAddr>, output: Pa
 
     let local_addr = match https_addr {
         Some(https_addr) => format!(
-            "http://localhost:{}, https://localhost:{}",
+            "http://127.0.0.1:{}, https://127.0.0.1:{}",
             http_addr.port(),
             https_addr.port()
         ),
-        None => format!("http://localhost:{}", http_addr.port()),
+        None => format!("http://127.0.0.1:{}", http_addr.port()),
     };
 
     let network_addr = match https_addr {
@@ -256,18 +256,14 @@ async fn listening_https(
 async fn redirect_to_https(ports: Ports, handle: axum_server::Handle<SocketAddr>) -> anyhow::Result<()> {
     fn make_https(uri: Uri, authority: uri::Authority) -> Option<Uri> {
         let mut parts = uri.into_parts();
-
         parts.scheme = Some(uri::Scheme::HTTPS);
         parts.authority = Some(authority);
-
-        if parts.path_and_query.is_none() {
-            parts.path_and_query = Some("/".parse().unwrap());
-        }
-
+        parts.path_and_query.get_or_insert_with(|| "/".parse().unwrap());
         Uri::from_parts(parts).ok()
     }
 
-    let authority = format!("127.0.0.1:{}", ports.https).parse().unwrap();
+    let local_ip = local_ip_address::local_ip()?;
+    let authority = format!("{local_ip}:{}", ports.https).parse()?;
     let redirect = move |uri| async move {
         match make_https(uri, authority) {
             Some(uri) => Ok(Redirect::permanent(&uri.to_string())),
@@ -280,8 +276,7 @@ async fn redirect_to_https(ports: Ports, handle: axum_server::Handle<SocketAddr>
     axum_server::bind(addr)
         .handle(handle)
         .serve(redirect.into_make_service())
-        .await
-        .with_context(|| "error in server")?;
+        .await?;
 
     Ok(())
 }
