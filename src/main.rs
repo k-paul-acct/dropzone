@@ -1,3 +1,5 @@
+mod local_ip;
+
 use anyhow::Context;
 use axum::{
     Router,
@@ -18,6 +20,8 @@ use tower_http::{
     limit::RequestBodyLimitLayer,
 };
 use uuid::Uuid;
+
+use crate::local_ip::best_local_ip;
 
 const INDEX_HTML: &'static str = include_str!("index.html");
 const FAVICON_SVG: &'static str = include_str!("favicon.svg");
@@ -193,9 +197,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn print_entry(http_addr: SocketAddr, https_addr: Option<SocketAddr>, output: PathBuf) {
-    let local_ip = local_ip_address::local_ip()
+    let local_ip = best_local_ip()
         .map(|ip| ip.to_string())
-        .unwrap_or_else(|_| "<your-ip>".to_string());
+        .unwrap_or_else(|| "<your-ip>".to_string());
 
     let local_addr = match https_addr {
         Some(https_addr) => format!(
@@ -262,7 +266,7 @@ async fn redirect_to_https(ports: Ports, handle: axum_server::Handle<SocketAddr>
         Uri::from_parts(parts).ok()
     }
 
-    let local_ip = local_ip_address::local_ip()?;
+    let local_ip = best_local_ip().ok_or_else(|| anyhow::anyhow!("could not determine local address"))?;
     let authority = format!("{local_ip}:{}", ports.https).parse()?;
     let redirect = move |uri| async move {
         match make_https(uri, authority) {
