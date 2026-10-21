@@ -223,9 +223,7 @@ fn print_entry(http_addr: SocketAddr, https_addr: Option<SocketAddr>, output: Pa
     println!("{}", "║             DropZone 🚀          ║".purple());
     println!("{}", "╚══════════════════════════════════╝".purple());
 
-    if https_addr.is_some() {
-        println!("  {}", "Running in secure HTTPS mode".green().bold());
-    } else {
+    if https_addr.is_none() {
         println!("  {}", "Running in insecure HTTP-only mode".red().bold());
     }
 
