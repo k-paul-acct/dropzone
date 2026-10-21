@@ -12,7 +12,7 @@ use axum::{
 };
 use axum_server::tls_rustls::RustlsConfig;
 use chrono::Local;
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use colored::Colorize;
 use qrcode::QrCode;
 use std::{env, net::SocketAddr, path::PathBuf};
@@ -101,6 +101,18 @@ async fn handle_message(mut multipart: Multipart) -> impl IntoResponse {
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start DropZone server
+    Serve(ServeArgs),
+}
+
+#[derive(Args)]
+struct ServeArgs {
     /// HTTP port to listen to.
     #[arg(default_value_t = 8080)]
     port: u16,
@@ -127,10 +139,7 @@ struct Ports {
     https: u16,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Cli::parse();
-
+async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&args.output)
         .await
         .with_context(|| format!("could not create output directory `{}`", args.output.display()))?;
@@ -192,6 +201,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::Serve(args) => run_serve(args),
+    }
+    .await
 }
 
 fn print_entry(http_addr: SocketAddr, https_addr: Option<SocketAddr>, output: PathBuf) {
