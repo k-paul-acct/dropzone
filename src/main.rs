@@ -1,4 +1,5 @@
 mod local_ip;
+mod qr;
 
 use anyhow::Context;
 use axum::{
@@ -13,6 +14,7 @@ use axum_server::tls_rustls::RustlsConfig;
 use chrono::Local;
 use clap::Parser;
 use colored::Colorize;
+use qrcode::QrCode;
 use std::{env, net::SocketAddr, path::PathBuf};
 use tokio::fs;
 use tower_http::{
@@ -86,12 +88,8 @@ async fn handle_message(mut multipart: Multipart) -> impl IntoResponse {
                 let trimmed = text.trim();
                 if !trimmed.is_empty() {
                     let ts = Local::now().format("%H:%M:%S");
-                    println!(
-                        "{} {}\n  {}",
-                        format!("[{ts}]").dimmed(),
-                        "MESSAGE".yellow().bold(),
-                        trimmed,
-                    );
+                    println!("{} {}", format!("[{ts}]").dimmed(), "MESSAGE".yellow().bold());
+                    println!("{}", trimmed);
                 }
             }
         }
@@ -234,6 +232,20 @@ fn print_entry(http_addr: SocketAddr, https_addr: Option<SocketAddr>, output: Pa
     println!("  {} {}", "Local:".bold(), local_addr);
     println!("  {} {}", "Network:".bold(), network_addr);
     println!("  {} {}", "Uploads:".bold(), output.display());
+
+    let qr_url = match https_addr {
+        Some(https_addr) => format!("https://{}:{}/", local_ip, https_addr.port()),
+        None => format!("http://{}:{}/", local_ip, http_addr.port()),
+    };
+    if let Ok(qr) = QrCode::with_error_correction_level(qr_url, qrcode::EcLevel::L) {
+        println!("  {}", "QR code for network address:".bold());
+        println!();
+        for line in qr::render_to_string(&qr).lines() {
+            println!("  {}", line.black().on_bright_white());
+        }
+        println!();
+    }
+
     println!("  {}", "Waiting for connections...".dimmed());
     println!();
 }
