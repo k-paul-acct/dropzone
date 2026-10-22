@@ -1,5 +1,6 @@
 mod local_ip;
 mod qr;
+mod tls;
 
 use anyhow::Context;
 use axum::{
@@ -10,7 +11,6 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
 };
-use axum_server::tls_rustls::RustlsConfig;
 use chrono::Local;
 use clap::{Args, Parser, Subcommand};
 use colored::Colorize;
@@ -175,11 +175,24 @@ async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
             .await
             .with_context(|| "error in server")?;
     } else {
-        let cert_path = env::var("DROPZONE_CERT_PATH").unwrap_or_else(|_| "./cert.pem".to_string());
-        let cert_key_path = env::var("DROPZONE_CERT_KEY_PATH").unwrap_or_else(|_| "./key.pem".to_string());
-        let config = RustlsConfig::from_pem_file(cert_path, cert_key_path)
-            .await
-            .with_context(|| "could not read cert data")?;
+        let source = tls::CertificateSource::from_paths(
+            env::var_os("DROPZONE_CERT_PATH"),
+            env::var_os("DROPZONE_CERT_KEY_PATH"),
+        )?;
+        let config = source.config(best_local_ip()).await?;
+        match &source {
+            tls::CertificateSource::Generated => {
+                println!(
+                    "{}",
+                    "Using a temporary self-signed TLS certificate. Browsers will show a certificate warning.\n\
+                     The certificate changes each startup; bypassing the warning does not verify the server's identity."
+                        .yellow()
+                );
+            }
+            tls::CertificateSource::Files { cert: _, key: _ } => {
+                println!("{}", "Using the specified TLS certificate.".dimmed());
+            }
+        }
 
         let addr = SocketAddr::from(([0, 0, 0, 0], ports.https));
         let http_handle = axum_server::Handle::new();
@@ -242,7 +255,7 @@ fn print_entry(http_addr: SocketAddr, https_addr: Option<SocketAddr>, output: Pa
     println!("{}", "╚══════════════════════════════════╝".purple());
 
     if https_addr.is_none() {
-        println!("  {}", "Running in insecure HTTP-only mode".red().bold());
+        eprintln!("  {}", "Running in insecure HTTP-only mode".red().bold());
     }
 
     println!("  {} {}", "Local:".bold(), local_addr);
