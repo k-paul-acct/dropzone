@@ -27,7 +27,7 @@ cargo build --release
 
 ### Configuration
 
-By default, DropZone runs with TLS (HTTPS mode). At each startup it generates a fresh self-signed ED25519 certificate and private key in memory.
+By default, DropZone runs with TLS (HTTPS mode). At each startup it generates a fresh self-signed ECDSA P-256 certificate and private key in memory.
 
 > [!WARNING]
 > Browsers will show a certificate warning. The generated certificate is not automatically trusted, and it changes every startup. Accepting the warning enables encrypted traffic but does not reliably verify the server's identity against an active attacker.

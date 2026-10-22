@@ -2,7 +2,7 @@ use std::{ffi::OsString, net::IpAddr, path::PathBuf};
 
 use anyhow::{Context, bail};
 use axum_server::tls_rustls::RustlsConfig;
-use rcgen::{CertificateParams, KeyPair, PKCS_ED25519, SanType};
+use rcgen::{CertificateParams, KeyPair, PKCS_ECDSA_P256_SHA256, SanType};
 
 pub enum CertificateSource {
     Generated,
@@ -41,7 +41,7 @@ impl CertificateSource {
 }
 
 fn generate_certificate(local_ip: Option<IpAddr>) -> anyhow::Result<(String, String)> {
-    let key = KeyPair::generate_for(&PKCS_ED25519).context("could not generate TLS private key")?;
+    let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).context("could not generate TLS private key")?;
     let cert = certificate_params(local_ip)?
         .self_signed(&key)
         .context("could not generate self-signed TLS certificate")?;
