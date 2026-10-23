@@ -2,20 +2,21 @@ mod local_ip;
 mod qr;
 mod tls;
 
+use std::{env, net::SocketAddr, path::PathBuf};
+
 use anyhow::Context;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Multipart, State},
     handler::HandlerWithoutStateExt,
     http::{StatusCode, Uri, header, uri},
-    response::{Html, IntoResponse, Redirect},
+    response::{IntoResponse, Redirect},
     routing::{get, post},
 };
 use chrono::Local;
 use clap::{Args, Parser, Subcommand};
 use colored::Colorize;
 use qrcode::QrCode;
-use std::{env, net::SocketAddr, path::PathBuf};
 use tokio::fs;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -28,12 +29,12 @@ use crate::local_ip::best_local_ip;
 const INDEX_HTML: &'static str = include_str!("index.html");
 const FAVICON_SVG: &'static str = include_str!("favicon.svg");
 
-async fn index() -> Html<&'static str> {
-    Html(INDEX_HTML)
+async fn index() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, mime::TEXT_HTML_UTF_8.as_ref())], INDEX_HTML)
 }
 
 async fn favicon() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "image/svg+xml")], FAVICON_SVG)
+    ([(header::CONTENT_TYPE, mime::IMAGE_SVG.as_ref())], FAVICON_SVG)
 }
 
 async fn handle_upload(State(upload_dir): State<PathBuf>, mut multipart: Multipart) -> impl IntoResponse {
@@ -57,6 +58,11 @@ async fn handle_upload(State(upload_dir): State<PathBuf>, mut multipart: Multipa
             .extension()
             .map(|e| format!(".{}", e.to_string_lossy()))
             .unwrap_or_default();
+
+        if let Err(err) = fs::create_dir_all(&upload_dir).await {
+            eprintln!("Failed to create directory at '{}': {err}", upload_dir.display());
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
 
         let unique = format!("{}-{}{}", stem, &Uuid::new_v4().to_string()[..8], ext);
         let dest = upload_dir.join(&unique);
@@ -140,12 +146,6 @@ struct Ports {
 }
 
 async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
-    fs::create_dir_all(&args.output)
-        .await
-        .with_context(|| format!("could not create output directory `{}`", args.output.display()))?;
-
-    let cors = CorsLayer::new().allow_origin(Any);
-
     let app = Router::new()
         .route("/", get(index))
         .route("/favicon.svg", get(favicon))
@@ -156,7 +156,9 @@ async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
         Some(size) => app.layer(RequestBodyLimitLayer::new(size)),
         None => app,
     };
-    let app = app.layer(cors).with_state(args.output.clone());
+    let app = app
+        .layer(CorsLayer::new().allow_origin(Any))
+        .with_state(args.output.clone());
 
     let ports = Ports {
         http: args.port,

@@ -485,6 +485,7 @@ dependencies = [
  "clap",
  "colored",
  "local-ip-address",
+ "mime",
  "qrcode",
  "rcgen",
  "tokio",
