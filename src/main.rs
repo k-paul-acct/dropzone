@@ -1,6 +1,7 @@
 mod local_ip;
 mod qr;
 mod tls;
+mod upload;
 
 use std::{env, net::SocketAddr, path::PathBuf};
 
@@ -21,7 +22,6 @@ use tower_http::{
     cors::{Any, CorsLayer},
     limit::RequestBodyLimitLayer,
 };
-use uuid::Uuid;
 
 use crate::local_ip::best_local_ip;
 
@@ -45,40 +45,30 @@ async fn handle_upload(State(upload_dir): State<PathBuf>, mut multipart: Multipa
 
         let data = match field.bytes().await {
             Ok(d) => d,
-            Err(e) => {
-                eprintln!("Error reading field: {e}");
+            Err(err) => {
+                eprintln!("Error reading field: {err}");
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         };
-
-        let stem = PathBuf::from(&file_name);
-        let stem = stem.file_stem().unwrap_or_default().to_string_lossy();
-        let ext = PathBuf::from(&file_name)
-            .extension()
-            .map(|e| format!(".{}", e.to_string_lossy()))
-            .unwrap_or_default();
 
         if let Err(err) = fs::create_dir_all(&upload_dir).await {
             eprintln!("Failed to create directory at '{}': {err}", upload_dir.display());
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
 
-        let unique = format!("{}-{}{}", stem, &Uuid::new_v4().to_string()[..8], ext);
-        let dest = upload_dir.join(&unique);
-
-        match fs::write(&dest, &data).await {
-            Ok(_) => {
+        match upload::save_file(&upload_dir, &file_name, &data).await {
+            Ok(dest) => {
                 let ts = Local::now().format("%H:%M:%S");
                 println!(
-                    "{} {} {} ({} bytes)",
+                    "{} {} '{}' ({} bytes)",
                     format!("[{ts}]").dimmed(),
                     "FILE".green().bold(),
-                    unique,
+                    dest.file_name().unwrap_or_default().display(),
                     data.len()
                 );
             }
-            Err(e) => {
-                eprintln!("Failed to write file {unique}: {e}");
+            Err(err) => {
+                eprintln!("Failed to write file '{file_name}': {err}");
                 return StatusCode::INTERNAL_SERVER_ERROR;
             }
         }
