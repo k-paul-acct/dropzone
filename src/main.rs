@@ -8,9 +8,8 @@ use anyhow::Context;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Multipart, State},
-    handler::HandlerWithoutStateExt,
-    http::{StatusCode, Uri, header, uri},
-    response::{IntoResponse, Redirect},
+    http::{StatusCode, header},
+    response::IntoResponse,
     routing::{get, post},
 };
 use chrono::Local;
@@ -113,19 +112,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start DropZone server
+    /// Start DropZone server.
     Serve(ServeArgs),
 }
 
 #[derive(Args)]
 struct ServeArgs {
-    /// HTTP port to listen to.
-    #[arg(default_value_t = 8080)]
+    /// Port to listen to.
+    #[arg(default_value_t = 8443)]
     port: u16,
-
-    /// HTTPS port to listen to.
-    #[arg(long, default_value_t = 8443)]
-    https_port: u16,
 
     /// Do not use TLS (run in HTTP mode).
     #[arg(long)]
@@ -138,11 +133,6 @@ struct ServeArgs {
     /// Limit the maximum body size of uploaded files in bytes.
     #[arg(long, env = "DROPZONE_MAX_BODY_SIZE")]
     max_body_size: Option<usize>,
-}
-
-struct Ports {
-    http: u16,
-    https: u16,
 }
 
 async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -160,28 +150,30 @@ async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
         .layer(CorsLayer::new().allow_origin(Any))
         .with_state(args.output.clone());
 
-    let ports = Ports {
-        http: args.port,
-        https: args.https_port,
-    };
+    let local_ip = best_local_ip().context("Could not find suitable local IP")?;
 
     if args.no_tls {
-        let addr = SocketAddr::from(([0, 0, 0, 0], ports.http));
+        let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
         let handle = axum_server::Handle::new();
 
-        tokio::spawn(listening_http(handle.clone(), args.output.clone()));
+        tokio::spawn(listening(
+            handle.clone(),
+            true,
+            SocketAddr::new(local_ip, args.port),
+            args.output.clone(),
+        ));
 
         axum_server::bind(addr)
             .handle(handle)
             .serve(app.into_make_service())
-            .await
-            .with_context(|| "error in server")?;
+            .await?
     } else {
         let source = tls::CertificateSource::from_paths(
             env::var_os("DROPZONE_CERT_PATH"),
             env::var_os("DROPZONE_CERT_KEY_PATH"),
         )?;
-        let config = source.config(best_local_ip()).await?;
+        let config = source.config(Some(local_ip)).await?;
+
         match &source {
             tls::CertificateSource::Generated => {
                 println!(
@@ -196,79 +188,43 @@ async fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let addr = SocketAddr::from(([0, 0, 0, 0], ports.https));
-        let http_handle = axum_server::Handle::new();
-        let https_handle = axum_server::Handle::new();
+        let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
+        let handle = axum_server::Handle::new();
 
-        tokio::spawn(listening_https(
-            http_handle.clone(),
-            https_handle.clone(),
+        tokio::spawn(listening(
+            handle.clone(),
+            false,
+            SocketAddr::new(local_ip, args.port),
             args.output.clone(),
         ));
 
-        tokio::spawn(redirect_to_https(ports, http_handle));
-
         axum_server::bind_rustls(addr, config)
-            .handle(https_handle)
+            .handle(handle)
             .serve(app.into_make_service())
-            .await
-            .with_context(|| "error in server")?;
+            .await?
     }
 
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
-    match cli.command {
-        Commands::Serve(args) => run_serve(args),
-    }
-    .await
-}
-
-fn print_entry(http_addr: SocketAddr, https_addr: Option<SocketAddr>, output: PathBuf) {
-    let local_ip = best_local_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|| "<your-ip>".to_string());
-
-    let local_addr = match https_addr {
-        Some(https_addr) => format!(
-            "http://127.0.0.1:{}, https://127.0.0.1:{}",
-            http_addr.port(),
-            https_addr.port()
-        ),
-        None => format!("http://127.0.0.1:{}", http_addr.port()),
-    };
-
-    let network_addr = match https_addr {
-        Some(https_addr) => format!(
-            "http://{}:{}, https://{}:{}",
-            local_ip,
-            http_addr.port(),
-            local_ip,
-            https_addr.port()
-        ),
-        None => format!("http://{}:{}", local_ip, http_addr.port()),
-    };
+fn print_entry(is_http: bool, addr: SocketAddr, output: PathBuf) {
+    let protocol = if is_http { "http" } else { "https" };
+    let local_addr = format!("{}://127.0.0.1:{}/", protocol, addr.port());
+    let network_addr = format!("{}://{}:{}/", protocol, addr.ip(), addr.port());
 
     println!("{}", "╔══════════════════════════════════╗".purple());
     println!("{}", "║             DropZone 🚀          ║".purple());
     println!("{}", "╚══════════════════════════════════╝".purple());
 
-    if https_addr.is_none() {
-        eprintln!("  {}", "Running in insecure HTTP-only mode".red().bold());
+    if is_http {
+        println!("  {}", "Running in insecure HTTP-only mode".red().bold());
     }
 
-    println!("  {} {}", "Local:".bold(), local_addr);
+    println!("  {} {}", "Local:  ".bold(), local_addr);
     println!("  {} {}", "Network:".bold(), network_addr);
     println!("  {} {}", "Uploads:".bold(), output.display());
 
-    let qr_url = match https_addr {
-        Some(https_addr) => format!("https://{}:{}/", local_ip, https_addr.port()),
-        None => format!("http://{}:{}/", local_ip, http_addr.port()),
-    };
-    if let Ok(qr) = QrCode::with_error_correction_level(qr_url, qrcode::EcLevel::L) {
+    if let Ok(qr) = QrCode::with_error_correction_level(network_addr, qrcode::EcLevel::L) {
         println!("  {}", "QR code for network address:".bold());
         println!();
         for line in qr::render_to_string(&qr).lines() {
@@ -281,49 +237,17 @@ fn print_entry(http_addr: SocketAddr, https_addr: Option<SocketAddr>, output: Pa
     println!();
 }
 
-async fn listening_http(handle: axum_server::Handle<SocketAddr>, output: PathBuf) {
-    if let Some(addr) = handle.listening().await {
-        print_entry(addr, None, output);
+async fn listening(handle: axum_server::Handle<SocketAddr>, is_http: bool, addr: SocketAddr, output: PathBuf) {
+    if handle.listening().await.is_some() {
+        print_entry(is_http, addr, output);
     }
 }
 
-async fn listening_https(
-    http_handle: axum_server::Handle<SocketAddr>,
-    https_handle: axum_server::Handle<SocketAddr>,
-    output: PathBuf,
-) {
-    match tokio::join!(http_handle.listening(), https_handle.listening()) {
-        (Some(http_addr), Some(https_addr)) => {
-            print_entry(http_addr, Some(https_addr), output);
-        }
-        _ => {}
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::Serve(args) => run_serve(args),
     }
-}
-
-async fn redirect_to_https(ports: Ports, handle: axum_server::Handle<SocketAddr>) -> anyhow::Result<()> {
-    fn make_https(uri: Uri, authority: uri::Authority) -> Option<Uri> {
-        let mut parts = uri.into_parts();
-        parts.scheme = Some(uri::Scheme::HTTPS);
-        parts.authority = Some(authority);
-        parts.path_and_query.get_or_insert_with(|| "/".parse().unwrap());
-        Uri::from_parts(parts).ok()
-    }
-
-    let local_ip = best_local_ip().ok_or_else(|| anyhow::anyhow!("could not determine local address"))?;
-    let authority = format!("{local_ip}:{}", ports.https).parse()?;
-    let redirect = move |uri| async move {
-        match make_https(uri, authority) {
-            Some(uri) => Ok(Redirect::permanent(&uri.to_string())),
-            None => Err(StatusCode::BAD_REQUEST),
-        }
-    };
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], ports.http));
-
-    axum_server::bind(addr)
-        .handle(handle)
-        .serve(redirect.into_make_service())
-        .await?;
-
-    Ok(())
+    .await
 }
