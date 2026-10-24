@@ -8,6 +8,7 @@ A minimal local-network file & message sharing CLI tool written in Rust.
 ### Features
 
 - 📁 **File uploads** --- connected devices can drag and drop or select files
+- 🔗 **One-time downloads** --- share a file directly using a random UUID URL and QR code
 - 💬 **Text messages** --- typed messages are printed directly to your terminal
 - 🌐 **Zero config** --- run `dropzone serve` and share the network URL or scan the QR code shown in the terminal
 - 🎨 **Nice UI** --- dark-themed web page, works on mobile too
@@ -26,6 +27,21 @@ cargo build --release
 ```
 
 Open the network URL on another device on the same local network to send files or messages to the machine running DropZone. Files are saved on that machine; messages are printed to its terminal.
+
+### Share a file once
+
+```bash
+./target/release/dropzone share ./document.pdf
+
+# Optional: custom port and unencrypted HTTP
+./target/release/dropzone share ./document.pdf --port 5050 --no-tls
+```
+
+Scan the printed QR code or open the download URL on another device on the same local network.
+
+The first GET request consumes the share, and the server stops accepting connections while allowing the response to finish streaming. Concurrent download attempts cannot retrieve the file again. An interrupted download still consumes it; run the command again to retry.
+
+Sharing uses the same TLS defaults and certificate environment variables as `serve`. Anyone who has the URL and can reach the port can download the file; share it only with the intended recipient.
 
 ### Configuration
 
@@ -68,4 +84,4 @@ The server listens on all IPv4 interfaces (`0.0.0.0`), not just localhost. There
 
 #### All available options
 
-Use `dropzone serve --help` to show all server options.
+Use `dropzone serve --help` or `dropzone share --help` to show the options for each command.
