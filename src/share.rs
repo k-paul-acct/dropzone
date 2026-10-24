@@ -14,11 +14,12 @@ use tokio::{fs::File, sync::Mutex};
 use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 
-use crate::{cli::ShareArgs, server};
+use crate::{cli::ShareArgs, server, web};
 
 struct SharedFile {
     file: Mutex<Option<File>>,
     headers: HeaderMap,
+    page: String,
     handle: axum_server::Handle<SocketAddr>,
 }
 
@@ -41,6 +42,46 @@ fn download_headers(name: &str, length: u64) -> HeaderMap {
     );
 
     headers
+}
+
+fn render_page(name: &str, length: u64, download_url: &str) -> String {
+    fn escape_html(value: &str) -> String {
+        value
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#39;")
+    }
+
+    fn file_size(length: u64) -> String {
+        if length < 1024 {
+            return format!("{length} bytes");
+        }
+        let mut size = length as f64;
+        for unit in ["KiB", "MiB", "GiB", "TiB", "PiB", "EiB"] {
+            size /= 1024.0;
+            if size < 1024.0 || unit == "EiB" {
+                return format!("{size:.1} {unit} ({length} bytes)");
+            }
+        }
+        unreachable!()
+    }
+
+    include_str!("share.html")
+        .replace("{{file_name}}", &escape_html(name))
+        .replace("{{file_size}}", &file_size(length))
+        .replace("{{download_url}}", &escape_html(download_url))
+}
+
+async fn page(State(state): State<Arc<SharedFile>>) -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        state.page.clone(),
+    )
 }
 
 async fn head(State(state): State<Arc<SharedFile>>) -> impl IntoResponse {
@@ -67,13 +108,17 @@ pub async fn run(args: ShareArgs) -> Result<(), Box<dyn std::error::Error>> {
     let name = args.path.file_name().unwrap_or_default().to_string_lossy();
     let path = format!("/{}", Uuid::new_v4());
     let handle = axum_server::Handle::new();
-    let state = Arc::new(SharedFile {
-        file: Mutex::new(Some(file)),
-        headers: download_headers(&name, metadata.len()),
-        handle: handle.clone(),
-    });
 
-    let app = Router::new().route(&path, get(download).head(head)).with_state(state);
+    let app = Router::new()
+        .route(&path, get(page))
+        .route(&format!("{path}/download"), get(download).head(head))
+        .with_state(Arc::new(SharedFile {
+            file: Mutex::new(Some(file)),
+            headers: download_headers(&name, metadata.len()),
+            page: render_page(&name, metadata.len(), &format!("{path}/download")),
+            handle: handle.clone(),
+        }))
+        .merge(web::assets());
 
     server::run(
         app,

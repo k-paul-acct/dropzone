@@ -6,6 +6,7 @@ mod server;
 mod share;
 mod tls;
 mod upload;
+mod web;
 
 use clap::Parser;
 

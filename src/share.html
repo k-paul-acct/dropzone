@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Download a file · DropZone</title>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="stylesheet" href="/style.css" />
+    </head>
+
+    <body>
+        <header>
+            <h1>Drop<span>Zone</span> 🚀</h1>
+            <p>Receive a file from this device instantly</p>
+        </header>
+
+        <main class="grid share-grid">
+            <section class="card" aria-labelledby="download-heading">
+                <h2 id="download-heading">📁 Receive File</h2>
+                <div class="file-preview">
+                    <div class="file-icon" aria-hidden="true">⬇️</div>
+                    <p class="file-name">{{file_name}}</p>
+                    <p class="file-size">{{file_size}}</p>
+                </div>
+                <p class="share-note">
+                    This file can be downloaded once. The sender’s server will
+                    stop after the transfer. If the download is interrupted, ask
+                    the sender to share the file again.
+                </p>
+                <form
+                    class="download-form"
+                    id="download-form"
+                    action="{{download_url}}"
+                    method="get"
+                >
+                    <button type="submit" id="download-btn">Download</button>
+                    <p
+                        class="download-status"
+                        id="download-status"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                </form>
+            </section>
+        </main>
+
+        <script>
+            const form = document.getElementById("download-form");
+            const button = document.getElementById("download-btn");
+            const status = document.getElementById("download-status");
+
+            form.addEventListener("submit", () => {
+                button.disabled = true;
+                button.textContent = "Download requested";
+                status.textContent =
+                    "Your browser will handle the download. This link can only be used once.";
+            });
+        </script>
+    </body>
+</html>

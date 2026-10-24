@@ -14,17 +14,13 @@ use tower_http::{
     limit::RequestBodyLimitLayer,
 };
 
-use crate::{cli, server, upload};
-
-const INDEX_HTML: &'static str = include_str!("index.html");
-const FAVICON_SVG: &'static str = include_str!("favicon.svg");
+use crate::{cli, server, upload, web};
 
 async fn index() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], INDEX_HTML)
-}
-
-async fn favicon() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "image/svg+xml")], FAVICON_SVG)
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        include_str!("index.html"),
+    )
 }
 
 async fn handle_upload(State(upload_dir): State<PathBuf>, mut multipart: Multipart) -> impl IntoResponse {
@@ -86,17 +82,16 @@ async fn handle_message(mut multipart: Multipart) -> impl IntoResponse {
 pub async fn run(args: cli::ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/", get(index))
-        .route("/favicon.svg", get(favicon))
         .route("/upload", post(handle_upload))
         .route("/message", post(handle_message))
+        .with_state(args.output.clone())
+        .merge(web::assets())
         .layer(DefaultBodyLimit::disable());
     let app = match args.max_body_size {
         Some(size) => app.layer(RequestBodyLimitLayer::new(size)),
         None => app,
     };
-    let app = app
-        .layer(CorsLayer::new().allow_origin(cors::Any))
-        .with_state(args.output.clone());
+    let app = app.layer(CorsLayer::new().allow_origin(cors::Any));
 
     server::run(
         app,

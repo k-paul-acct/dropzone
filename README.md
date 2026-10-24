@@ -37,9 +37,9 @@ Open the network URL on another device on the same local network to send files o
 ./target/release/dropzone share ./document.pdf --port 5050 --no-tls
 ```
 
-Scan the printed QR code or open the download URL on another device on the same local network.
+Scan the printed QR code or open the share URL on another device on the same local network.
 
-The first GET request consumes the share, and the server stops accepting connections while allowing the response to finish streaming. Concurrent download attempts cannot retrieve the file again. An interrupted download still consumes it; run the command again to retry.
+Click **Download** to receive the file. After the download completes, the server stops. Concurrent download attempts cannot retrieve the file again. An interrupted download still consumes it; run the command again to retry.
 
 Sharing uses the same TLS defaults and certificate environment variables as `serve`. Anyone who has the URL and can reach the port can download the file; share it only with the intended recipient.
 
